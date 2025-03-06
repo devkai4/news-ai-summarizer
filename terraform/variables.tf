@@ -19,11 +19,11 @@ variable "storage_type" {
 variable "notification_email" {
   description = "Email address to send notifications to"
   type        = string
-  default     = "your-email@example.com"
+  default     = "devkai4@pm.me"
 }
 
 variable "schedule_expression" {
   description = "CloudWatch Events schedule expression"
   type        = string
-  default     = "cron(0 0 * * ? *)"  # Daily at midnight UTC
+  default     = "cron(0 0 * * ? *)" # Daily at midnight UTC
 }

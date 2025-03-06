@@ -34,42 +34,39 @@ trap cleanup EXIT
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "Project root directory: $PROJECT_ROOT"
 
-echo "Creating Lambda layer..."
-# Create Lambda layer directory structure
-mkdir -p "$TEMP_DIR/python"
+# Define the Lambda functions
+LAMBDA_FUNCTIONS=("news_collector" "news_processor")
 
-# Install dependencies for the layer
-echo "Installing dependencies for Lambda layer..."
-pip install feedparser requests beautifulsoup4 boto3 -t "$TEMP_DIR/python"
+# Package each Lambda function
+for function_name in "${LAMBDA_FUNCTIONS[@]}"; do
+    echo "Building $function_name Lambda package..."
 
-# Create the layer zip file
-echo "Creating layer zip file..."
-(cd "$TEMP_DIR" && zip -r "$PROJECT_ROOT/lambda-layer.zip" python)
+    # Create function temp directory
+    FUNCTION_DIR="$TEMP_DIR/$function_name"
+    mkdir -p "$FUNCTION_DIR"
 
-echo "Lambda layer created: $PROJECT_ROOT/lambda-layer.zip"
-
-# Function to package a Lambda function
-package_lambda() {
-    local function_name=$1
-    local function_dir="$PROJECT_ROOT/lambda/$function_name"
-    local output_file="$PROJECT_ROOT/${function_name}.zip"
-    
-    echo "Packaging $function_name Lambda function..."
-    
     # Check if function directory exists
-    if [ ! -d "$function_dir" ]; then
-        echo "Error: Function directory $function_dir does not exist."
-        return 1
+    if [ ! -d "$PROJECT_ROOT/lambda/$function_name" ]; then
+        echo "Error: Function directory $PROJECT_ROOT/lambda/$function_name does not exist."
+        continue
     fi
-    
-    # Create zip file
-    (cd "$function_dir" && zip -r "$output_file" .)
-    
-    echo "$function_name Lambda function packaged: $output_file"
-}
 
-# Package the Lambda functions
-package_lambda "news_collector"
-package_lambda "news_processor"
+    # Copy function code
+    cp "$PROJECT_ROOT/lambda/$function_name/lambda_function.py" "$FUNCTION_DIR/"
+
+    # Check if requirements file exists
+    if [ -f "$PROJECT_ROOT/lambda/$function_name/requirements.txt" ]; then
+        echo "Installing dependencies for $function_name..."
+        pip install -r "$PROJECT_ROOT/lambda/$function_name/requirements.txt" -t "$FUNCTION_DIR"
+    else
+        echo "No requirements.txt found for $function_name. Skipping dependency installation."
+    fi
+
+    # Create the zip file
+    echo "Creating zip file for $function_name..."
+    (cd "$FUNCTION_DIR" && zip -r "$PROJECT_ROOT/${function_name}.zip" .)
+
+    echo "$function_name Lambda function packaged: $PROJECT_ROOT/${function_name}.zip"
+done
 
 echo "Lambda packaging complete!"

@@ -102,6 +102,13 @@ You can choose between two storage options by setting the `STORAGE_TYPE` environ
 
 The default model is Claude 3.5 Sonnet, but you can change it by updating the `BEDROCK_MODEL_ID` environment variable.
 
+### Output Language
+
+You can choose the language for your summaries by setting the `OUTPUT_LANGUAGE` environment variable:
+
+- `en`: English (default)
+- `ja`: Japanese
+
 ### Notification Method
 
 - Primary: Amazon SES (email)
