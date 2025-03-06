@@ -1,5 +1,7 @@
 provider "aws" {
-  region = "ap-northeast-1"
+  region     = "ap-northeast-1"
+  access_key = var.access_key
+  secret_key = var.secret_key
 }
 
 # IAM Role for Lambda functions
@@ -259,10 +261,10 @@ resource "aws_api_gateway_resource" "collect_resource" {
 
 # API Gateway method for collector
 resource "aws_api_gateway_method" "collect_method" {
-  rest_api_id        = aws_api_gateway_rest_api.news_api.id
-  resource_id        = aws_api_gateway_resource.collect_resource.id
-  http_method        = "POST"
-  authorization_type = "NONE"
+  rest_api_id   = aws_api_gateway_rest_api.news_api.id
+  resource_id   = aws_api_gateway_resource.collect_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
 }
 
 # API Gateway integration with Lambda
@@ -294,10 +296,10 @@ resource "aws_api_gateway_resource" "process_resource" {
 
 # API Gateway method for processor
 resource "aws_api_gateway_method" "process_method" {
-  rest_api_id        = aws_api_gateway_rest_api.news_api.id
-  resource_id        = aws_api_gateway_resource.process_resource.id
-  http_method        = "POST"
-  authorization_type = "NONE"
+  rest_api_id   = aws_api_gateway_rest_api.news_api.id
+  resource_id   = aws_api_gateway_resource.process_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
 }
 
 # API Gateway integration with Lambda

@@ -27,3 +27,15 @@ variable "schedule_expression" {
   type        = string
   default     = "cron(0 0 * * ? *)" # Daily at midnight UTC
 }
+
+variable "access_key" {
+  description = "AWS アクセスキー"
+  type        = string
+  sensitive   = true
+}
+
+variable "secret_key" {
+  description = "AWS シークレットキー"
+  type        = string
+  sensitive   = true
+}
