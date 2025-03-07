@@ -330,7 +330,13 @@ resource "aws_api_gateway_deployment" "news_api_deployment" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.news_api.id
-  stage_name  = "prod"
+}
+
+# Add a separate API Gateway stage resource
+resource "aws_api_gateway_stage" "prod" {
+  deployment_id = aws_api_gateway_deployment.news_api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.news_api.id
+  stage_name    = "prod"
 }
 
 # SNS Topic for news updates

@@ -9,10 +9,10 @@ from botocore.exceptions import ClientError
 STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'dynamodb')
 NEWS_BUCKET_NAME = os.environ.get('NEWS_BUCKET_NAME')
 NEWS_TABLE_NAME = os.environ.get('NEWS_TABLE_NAME')
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20240620-v1:0')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL')
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
-OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'en')  # Default to English, can be set to 'ja' for Japanese
+OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to English, can be set to 'ja' for Japanese
 
 # Initialize AWS services
 bedrock_runtime = boto3.client('bedrock-runtime')
@@ -83,14 +83,15 @@ Source: {source}
 Article Content:
 {content}
 
-これはAWSのアナウンスメントです。このAWSサービスまたは機能の発表について主要なポイントを簡潔に要約し、日本語で回答してください。
-以下の情報を含めてください：
-1. どのサービスまたは機能が発表されているか
-2. 主な機能やメリットは何か
-3. どの地域（リージョン）で利用可能か
-4. 注目すべき価格情報
+これはAWSのアナウンスメントです。このAWSサービスまたは機能の発表について詳細に分析し、日本語で回答してください。
+以下の情報を詳しく説明してください：
+1. 発表されたサービスまたは機能の概要と目的
+2. 提供される主な機能や特徴、および企業や開発者にもたらす具体的なメリット
+3. 利用可能なリージョンと展開計画
+4. 価格体系や料金情報の詳細
+5. 導入事例や推奨される使用シナリオ（もし記載があれば）
 
-要約は3〜5つの箇条書きで示してください。各ポイントは1〜2文で簡潔に作成してください。"""
+箇条書きではなく、各トピックについて段落形式で詳細に解説してください。技術的な特徴や利点についても具体的に説明し、なるべく包括的な情報を提供してください。"""
         else:
             prompt = f"""Article Title: {title}
 Source: {source}
@@ -98,14 +99,15 @@ Source: {source}
 Article Content:
 {content}
 
-This is an AWS announcement. Summarize the key points about this AWS service or feature announcement concisely.
-Include:
-1. What service or feature is being announced
-2. What are the main capabilities or benefits
-3. Where it's available (regions)
-4. Any notable pricing information
+This is an AWS announcement. Please provide a comprehensive analysis of this AWS service or feature announcement in detail.
+Please explain the following aspects in depth:
+1. Overview and purpose of the announced service or feature
+2. Main capabilities, features, and specific benefits they bring to businesses and developers
+3. Available regions and deployment plans
+4. Detailed pricing structure and cost information
+5. Case studies or recommended usage scenarios (if mentioned)
 
-Present your summary as 3-5 bullet points. Keep each point brief and focused, with 1-2 sentences per bullet."""
+Please structure your response in paragraphs rather than bullet points, providing detailed explanations for each topic. Include technical characteristics and advantages specifically, offering as comprehensive information as possible."""
 
         # Prepare request body based on model
         if "claude" in BEDROCK_MODEL_ID.lower():

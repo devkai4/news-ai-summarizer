@@ -49,3 +49,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+.tfvars
+news_processor.zip
+news_collector.zip
