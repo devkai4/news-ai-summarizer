@@ -6,6 +6,8 @@ This project uses AWS services to create a news aggregation and summarization ap
 
 The application consists of the following components:
 
+![AWS News AI Summarizer Architecture](./aws_news-ai-summarizer.drawio.png)
+
 1. **News Collector Lambda**: Fetches news from RSS feeds, extracts content, and stores it in DynamoDB or S3
 2. **News Processor Lambda**: Processes unprocessed news articles using AWS Bedrock for summarization
 3. **Storage**: Uses either DynamoDB or S3 for storing articles and their summaries

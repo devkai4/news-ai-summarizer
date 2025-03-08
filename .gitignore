@@ -54,4 +54,5 @@ Thumbs.db
 news_processor.zip
 news_collector.zip
 lambda-layer.zip
+sns_to_slack.zip
 temp/python
