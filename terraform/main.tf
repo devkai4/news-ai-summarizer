@@ -1,7 +1,7 @@
 provider "aws" {
-  region     = "ap-northeast-1"
-  access_key = var.access_key
-  secret_key = var.secret_key
+  region = "ap-northeast-1"
+  # access_key = var.access_key
+  # secret_key = var.secret_key
 }
 
 # IAM Role for Lambda functions
@@ -173,7 +173,7 @@ resource "aws_dynamodb_table" "news_table" {
 resource "aws_lambda_layer_version" "news_dependencies" {
   layer_name          = "news_dependencies"
   compatible_runtimes = ["python3.9"]
-  filename            = "../lambda-layer.zip"
+  filename            = "${path.module}/../lambda-layer.zip"
 }
 
 # Lambda function for collecting news
@@ -185,7 +185,7 @@ resource "aws_lambda_function" "news_collector" {
   timeout       = 300
   memory_size   = 256
 
-  filename = "../news_collector.zip"
+  filename = "${path.module}/../news_collector.zip"
 
   layers = [aws_lambda_layer_version.news_dependencies.arn]
 
@@ -207,7 +207,7 @@ resource "aws_lambda_function" "news_processor" {
   timeout       = 300
   memory_size   = 1024
 
-  filename = "../news_processor.zip"
+  filename = "${path.module}/../news_processor.zip"
 
   layers = [aws_lambda_layer_version.news_dependencies.arn]
 
