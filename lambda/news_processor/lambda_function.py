@@ -3,6 +3,8 @@ import os
 import boto3
 import datetime
 import uuid
+import urllib.request
+import urllib.parse
 from botocore.exceptions import ClientError
 
 # Environment variables
@@ -10,7 +12,7 @@ STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'dynamodb')
 NEWS_BUCKET_NAME = os.environ.get('NEWS_BUCKET_NAME')
 NEWS_TABLE_NAME = os.environ.get('NEWS_TABLE_NAME')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'arn:aws:bedrock:ap-northeast-1:xxx:inference-profile/apac.anthropic.claude-3-5-sonnet-20241022-v2:0')
-NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL')
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
 OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to English, can be set to 'ja' for Japanese
 
@@ -18,7 +20,6 @@ OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to English,
 bedrock_runtime = boto3.client('bedrock-runtime')
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
-ses_client = boto3.client('ses')
 sns_client = boto3.client('sns')
 news_table = dynamodb.Table(NEWS_TABLE_NAME) if STORAGE_TYPE == 'dynamodb' else None
 
@@ -74,6 +75,7 @@ def summarize_article_with_bedrock(article_data, language='en'):
         content = article_data.get('content', '')
         title = article_data.get('title', '')
         source = article_data.get('source', '')
+        link = article_data.get('link', '')
 
         # Skip if no content
         if not content:
@@ -83,6 +85,7 @@ def summarize_article_with_bedrock(article_data, language='en'):
         if language == 'ja':
             prompt = f"""Article Title: {title}
 Source: {source}
+Link: {link}
 
 Article Content:
 {content}
@@ -95,10 +98,12 @@ Article Content:
 4. 価格体系や料金情報の詳細
 5. 導入事例や推奨される使用シナリオ（もし記載があれば）
 
-箇条書きではなく、各トピックについて段落形式で詳細に解説してください。技術的な特徴や利点についても具体的に説明し、なるべく包括的な情報を提供してください。"""
+箇条書きではなく、各トピックについて段落形式で詳細に解説してください。技術的な特徴や利点についても具体的に説明し、なるべく包括的な情報を提供してください。
+最後に、詳細情報の参照先として次のURLを追加してください: {link}"""
         else:
             prompt = f"""Article Title: {title}
 Source: {source}
+Link: {link}
 
 Article Content:
 {content}
@@ -111,7 +116,8 @@ Please explain the following aspects in depth:
 4. Detailed pricing structure and cost information
 5. Case studies or recommended usage scenarios (if mentioned)
 
-Please structure your response in paragraphs rather than bullet points, providing detailed explanations for each topic. Include technical characteristics and advantages specifically, offering as comprehensive information as possible."""
+Please structure your response in paragraphs rather than bullet points, providing detailed explanations for each topic. Include technical characteristics and advantages specifically, offering as comprehensive information as possible.
+At the end, please include the following URL for reference: {link}"""
 
         # Prepare request body based on model
         if "claude" in BEDROCK_MODEL_ID.lower():
@@ -196,113 +202,113 @@ def update_article_in_s3(article_data, summary):
         print(f"Error updating article in S3: {str(e)}")
         return False
 
-def send_email_notification(articles_with_summaries):
-    """Send email notification with article summaries"""
+def send_slack_notification(articles_with_summaries):
+    """Send Slack notification with article summaries"""
     try:
-        if not NOTIFICATION_EMAIL:
-            print("No notification email configured")
+        if not SLACK_WEBHOOK_URL:
+            print("No Slack webhook URL configured")
             return False
 
-        # Prepare email content with language-specific subjects
+        # Prepare notification content with language-specific headers
         if OUTPUT_LANGUAGE == 'ja':
-            subject = f"AWS ニュースの要約 - {datetime.datetime.now().strftime('%Y-%m-%d')}"
-
-            body_html = f"""<html>
-<head>
-  <style>
-    body {{ font-family: Arial, sans-serif; }}
-    .article {{ margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
-    h2 {{ color: #333; }}
-    .source {{ color: #666; font-style: italic; }}
-    .summary {{ margin-top: 10px; }}
-    a {{ color: #0066cc; }}
-  </style>
-</head>
-<body>
-  <h1>{datetime.datetime.now().strftime('%Y-%m-%d')}のAWSニュース要約</h1>
-
-  <p>本日のAWSアナウンスメントの要約です：</p>
-
-"""
-            body_text = f"{datetime.datetime.now().strftime('%Y-%m-%d')}のAWSニュース要約\n\n"
+            header_text = f"{datetime.datetime.now().strftime('%Y-%m-%d')}のAWSニュース要約"
+            intro_text = "本日のAWSアナウンスメントの要約です："
+            read_more_text = "フルアナウンスメントを読む"
         else:
-            subject = f"AWS News Summary - {datetime.datetime.now().strftime('%Y-%m-%d')}"
+            header_text = f"AWS News Summaries for {datetime.datetime.now().strftime('%Y-%m-%d')}"
+            intro_text = "Here are your daily AWS announcement summaries:"
+            read_more_text = "Read Full Announcement"
 
-            body_html = f"""<html>
-<head>
-  <style>
-    body {{ font-family: Arial, sans-serif; }}
-    .article {{ margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
-    h2 {{ color: #333; }}
-    .source {{ color: #666; font-style: italic; }}
-    .summary {{ margin-top: 10px; }}
-    a {{ color: #0066cc; }}
-  </style>
-</head>
-<body>
-  <h1>AWS News Summaries for {datetime.datetime.now().strftime('%Y-%m-%d')}</h1>
+        # Create Slack message with blocks
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": header_text
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": intro_text
+                }
+            }
+        ]
 
-  <p>Here are your daily AWS announcement summaries:</p>
-
-"""
-            body_text = f"AWS News Summaries for {datetime.datetime.now().strftime('%Y-%m-%d')}\n\n"
-
-        # Add each article summary
+        # Add each article summary as blocks
         for article in articles_with_summaries:
             title = article.get('title', 'No Title')
             source = article.get('source', 'Unknown Source')
             summary = article.get('summary', 'No summary available')
             link = article.get('link', '#')
 
-            body_html += f"""<div class="article">
-    <h2>{title}</h2>
-    <p class="source">Source: {source}</p>
-    <div class="summary">{summary}</div>
-    <p><a href="{link}" target="_blank">Read Full Announcement</a></p>
-  </div>
-"""
+            # Add a divider between articles
+            blocks.append({"type": "divider"})
 
-            body_text += f"{title}\n"
-            body_text += f"Source: {source}\n"
-            body_text += f"{summary}\n"
-            body_text += f"Link: {link}\n\n"
-
-        body_html += """</body>
-</html>"""
-
-        # Send email using SES
-        try:
-            response = ses_client.send_email(
-                Source=NOTIFICATION_EMAIL,
-                Destination={
-                    'ToAddresses': [NOTIFICATION_EMAIL]
-                },
-                Message={
-                    'Subject': {
-                        'Data': subject
-                    },
-                    'Body': {
-                        'Text': {
-                            'Data': body_text
-                        },
-                        'Html': {
-                            'Data': body_html
-                        }
-                    }
+            # Add title and source
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{title}*\n_Source: {source}_"
                 }
-            )
-            return True
-        except ClientError as e:
-            print(f"Error sending email: {e.response['Error']['Message']}")
+            })
 
-            # If SES fails, try SNS as fallback
+            # Add summary (truncate if too long for Slack)
+            # Slack blocks have a text limit of 3000 characters
+            if len(summary) > 2900:
+                summary = summary[:2900] + "..."
+
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": summary
+                }
+            })
+
+            # Add link if available
+            if link and link != '#':
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"<{link}|{read_more_text}>"
+                    }
+                })
+
+        # Prepare the Slack message payload
+        slack_message = {
+            "blocks": blocks
+        }
+
+        # Send to Slack
+        try:
+            data = json.dumps(slack_message).encode('utf-8')
+            req = urllib.request.Request(
+                SLACK_WEBHOOK_URL,
+                data=data,
+                headers={'Content-Type': 'application/json'}
+            )
+
+            with urllib.request.urlopen(req) as response:
+                print(f"Slack notification sent successfully: {response.read().decode('utf-8')}")
+                return True
+
+        except Exception as e:
+            print(f"Error sending Slack notification: {str(e)}")
+
+            # If Slack fails, try SNS as fallback
             if SNS_TOPIC_ARN:
-                send_sns_notification(articles_with_summaries)
+                print("Falling back to SNS notification")
+                return send_sns_notification(articles_with_summaries)
 
             return False
 
     except Exception as e:
-        print(f"Error preparing email notification: {str(e)}")
+        print(f"Error preparing Slack notification: {str(e)}")
         return False
 
 def send_sns_notification(articles_with_summaries):
@@ -330,15 +336,40 @@ def send_sns_notification(articles_with_summaries):
             message += f"{title}\n"
             message += f"Source: {source}\n"
             message += f"{summary}\n"
-            message += f"Link: {link}\n\n"
 
-        # Send notification
+            # Add link explicitly in the message body if available
+            if link and link != '#':
+                if OUTPUT_LANGUAGE == 'ja':
+                    message += f"詳細情報: {link}\n\n"
+                else:
+                    message += f"More information: {link}\n\n"
+            else:
+                message += "\n"
+
+        # Format the articles as JSON for better compatibility with Lambda functions
+        # that may subscribe to this topic (like a Slack notification Lambda)
+        articles_json = []
+        for article in articles_with_summaries:
+            articles_json.append({
+                "title": article.get('title', 'No Title'),
+                "source": article.get('source', 'Unknown Source'),
+                "summary": article.get('summary', 'No summary available'),
+                "link": article.get('link', '#')
+            })
+
+        # Send notification with both text and structured format
         response = sns_client.publish(
             TopicArn=SNS_TOPIC_ARN,
-            Message=message,
-            Subject=subject
+            Message=json.dumps({
+                "default": message,
+                "email": message,
+                "lambda": json.dumps(articles_json)
+            }),
+            Subject=subject,
+            MessageStructure="json"  # This enables sending different message formats to different endpoints
         )
 
+        print(f"SNS notification sent successfully: {response}")
         return True
     except Exception as e:
         print(f"Error sending SNS notification: {str(e)}")
@@ -378,7 +409,13 @@ def process_articles():
 
     # Send notification if articles were processed
     if articles_with_summaries:
-        send_email_notification(articles_with_summaries)
+        # Try Slack notification first
+        if SLACK_WEBHOOK_URL:
+            slack_success = send_slack_notification(articles_with_summaries)
+            # If Slack fails and SNS is configured, the slack function will fall back to SNS
+        # If no Slack webhook is configured but SNS is, use SNS directly
+        elif SNS_TOPIC_ARN:
+            send_sns_notification(articles_with_summaries)
 
     return articles_with_summaries
 

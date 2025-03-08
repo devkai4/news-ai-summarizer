@@ -217,7 +217,7 @@ resource "aws_lambda_function" "news_processor" {
       NEWS_TABLE_NAME    = aws_dynamodb_table.news_table.name
       STORAGE_TYPE       = "dynamodb" # or "s3"
       BEDROCK_MODEL_ID   = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-      NOTIFICATION_EMAIL = "your-email@example.com"
+      SLACK_WEBHOOK_URL  = var.slack_webhook_url
       SNS_TOPIC_ARN      = aws_sns_topic.news_updates.arn
     }
   }
@@ -342,4 +342,41 @@ resource "aws_api_gateway_stage" "prod" {
 # SNS Topic for news updates
 resource "aws_sns_topic" "news_updates" {
   name = "news_updates"
+}
+
+# Optional SNS-to-Slack Lambda function
+resource "aws_lambda_function" "sns_to_slack" {
+  count         = var.deploy_sns_to_slack ? 1 : 0
+  function_name = "sns_to_slack"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 60
+  memory_size   = 128
+
+  filename = "${path.module}/../lambda/sns_to_slack/lambda_function.zip"
+
+  environment {
+    variables = {
+      SLACK_WEBHOOK_URL = var.slack_webhook_url
+    }
+  }
+}
+
+# SNS subscription for sns_to_slack Lambda
+resource "aws_sns_topic_subscription" "sns_to_slack_subscription" {
+  count     = var.deploy_sns_to_slack ? 1 : 0
+  topic_arn = aws_sns_topic.news_updates.arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.sns_to_slack[0].arn
+}
+
+# Permission for SNS to invoke sns_to_slack Lambda
+resource "aws_lambda_permission" "sns_to_slack_permission" {
+  count         = var.deploy_sns_to_slack ? 1 : 0
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sns_to_slack[0].function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.news_updates.arn
 }

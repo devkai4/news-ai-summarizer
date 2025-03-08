@@ -16,10 +16,15 @@ variable "storage_type" {
   default     = "dynamodb"
 }
 
-variable "notification_email" {
-  description = "Email address to send notifications to"
+variable "slack_webhook_url" {
+  description = "Slack webhook URL for sending notifications"
   type        = string
-  default     = "devkai4@pm.me"
+}
+
+variable "deploy_sns_to_slack" {
+  description = "Whether to deploy the SNS-to-Slack Lambda function"
+  type        = bool
+  default     = false
 }
 
 variable "schedule_expression" {
