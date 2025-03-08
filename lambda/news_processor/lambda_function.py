@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError
 STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'dynamodb')
 NEWS_BUCKET_NAME = os.environ.get('NEWS_BUCKET_NAME')
 NEWS_TABLE_NAME = os.environ.get('NEWS_TABLE_NAME')
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'arn:aws:bedrock:ap-northeast-1:xxx:inference-profile/apac.anthropic.claude-3-5-sonnet-20241022-v2:0')
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL')
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
 OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to English, can be set to 'ja' for Japanese
