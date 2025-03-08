@@ -53,3 +53,5 @@ Thumbs.db
 .tfvars
 news_processor.zip
 news_collector.zip
+lambda-layer.zip
+temp/python

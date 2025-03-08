@@ -26,7 +26,11 @@ def get_unprocessed_articles_from_dynamodb():
     """Get unprocessed articles from DynamoDB"""
     try:
         response = news_table.scan(
-            FilterExpression='processed = :processed AND source = :source',
+            FilterExpression='#proc = :processed AND #src = :source',
+            ExpressionAttributeNames={
+                '#proc': 'processed',
+                '#src': 'source'
+            },
             ExpressionAttributeValues={
                 ':processed': False,
                 ':source': 'AWS Announcements'
