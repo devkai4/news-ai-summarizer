@@ -26,14 +26,14 @@ def get_unprocessed_articles_from_dynamodb():
     """Get unprocessed articles from DynamoDB"""
     try:
         response = news_table.scan(
-            FilterExpression='#proc = :processed AND #src = :source',
+            FilterExpression='#proc = :processed_val AND #src = :source_val',
             ExpressionAttributeNames={
                 '#proc': 'processed',
                 '#src': 'source'
             },
             ExpressionAttributeValues={
-                ':processed': False,
-                ':source': 'AWS Announcements'
+                ':processed_val': False,
+                ':source_val': 'AWS Announcements'
             }
         )
 
@@ -156,10 +156,13 @@ def update_article_in_dynamodb(article_id, summary):
     try:
         news_table.update_item(
             Key={'id': article_id},
-            UpdateExpression='SET summary = :summary, processed = :processed, processed_at = :processed_at',
+            UpdateExpression='SET summary = :summary, #proc = :processed_val, processed_at = :processed_at',
+            ExpressionAttributeNames={
+                '#proc': 'processed'
+            },
             ExpressionAttributeValues={
                 ':summary': summary,
-                ':processed': True,
+                ':processed_val': True,
                 ':processed_at': datetime.datetime.now().isoformat()
             }
         )
