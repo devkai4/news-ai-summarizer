@@ -5,16 +5,20 @@ import datetime
 import uuid
 import urllib.request
 import urllib.parse
+import time
+import random
 from botocore.exceptions import ClientError
 
 # Environment variables
 STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'dynamodb')
 NEWS_BUCKET_NAME = os.environ.get('NEWS_BUCKET_NAME')
 NEWS_TABLE_NAME = os.environ.get('NEWS_TABLE_NAME')
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'arn:aws:bedrock:ap-northeast-1:xxx:inference-profile/apac.anthropic.claude-3-5-sonnet-20241022-v2:0')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
-OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to English, can be set to 'ja' for Japanese
+OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to Japanese, can be set to 'en' for English
+MAX_RETRIES = int(os.environ.get('MAX_RETRIES', '8'))  # Increase the number of retries
+BATCH_SIZE = int(os.environ.get('BATCH_SIZE', '2'))  # Limit the number of articles processed at once
 
 # Initialize AWS services
 bedrock_runtime = boto3.client('bedrock-runtime')
@@ -69,39 +73,44 @@ def get_unprocessed_articles_from_s3():
         return []
 
 def summarize_article_with_bedrock(article_data, language='en'):
-    """Summarize article using Bedrock with optional translation"""
-    try:
-        # Prepare content for summarization
-        content = article_data.get('content', '')
-        title = article_data.get('title', '')
-        source = article_data.get('source', '')
-        link = article_data.get('link', '')
+    """Summarize article using Bedrock with optional translation and robust retry mechanism"""
+    # Initialize retry counter
+    retry_count = 0
+    base_delay = 1  # Base delay in seconds
 
-        # Skip if no content
-        if not content:
-            return "No content available for summarization."
+    while retry_count <= MAX_RETRIES:
+        try:
+            # Prepare content for summarization
+            content = article_data.get('content', '')
+            title = article_data.get('title', '')
+            source = article_data.get('source', '')
+            link = article_data.get('link', '')
 
-        # Prepare prompt based on requested output language
-        if language == 'ja':
-            prompt = f"""Article Title: {title}
+            # Skip if no content
+            if not content:
+                return "No content available for summarization."
+
+            # Prepare prompt based on requested output language
+            if language == 'ja':
+                prompt = f"""Article Title: {title}
 Source: {source}
 Link: {link}
 
 Article Content:
 {content}
 
-これはAWSのアナウンスメントです。このAWSサービスまたは機能の発表について詳細に分析し、日本語で回答してください。
-以下の情報を詳しく説明してください：
-1. 発表されたサービスまたは機能の概要と目的
-2. 提供される主な機能や特徴、および企業や開発者にもたらす具体的なメリット
-3. 利用可能なリージョンと展開計画
-4. 価格体系や料金情報の詳細
-5. 導入事例や推奨される使用シナリオ（もし記載があれば）
+This is an AWS announcement. Please provide a detailed analysis of this AWS service or feature announcement in Japanese.
+Please explain the following aspects in depth:
+1. Overview and purpose of the announced service or feature
+2. Main capabilities, features, and specific benefits they bring to businesses and developers
+3. Available regions and deployment plans
+4. Detailed pricing structure and cost information
+5. Case studies or recommended usage scenarios (if mentioned)
 
-箇条書きではなく、各トピックについて段落形式で詳細に解説してください。技術的な特徴や利点についても具体的に説明し、なるべく包括的な情報を提供してください。
-最後に、詳細情報の参照先として次のURLを追加してください: {link}"""
-        else:
-            prompt = f"""Article Title: {title}
+Please structure your response in paragraphs rather than bullet points, providing detailed explanations for each topic. Include technical characteristics and advantages specifically, offering as comprehensive information as possible.
+At the end, please include the following URL for reference: {link}"""
+            else:
+                prompt = f"""Article Title: {title}
 Source: {source}
 Link: {link}
 
@@ -119,43 +128,65 @@ Please explain the following aspects in depth:
 Please structure your response in paragraphs rather than bullet points, providing detailed explanations for each topic. Include technical characteristics and advantages specifically, offering as comprehensive information as possible.
 At the end, please include the following URL for reference: {link}"""
 
-        # Prepare request body based on model
-        if "claude" in BEDROCK_MODEL_ID.lower():
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }
-        else:  # Default for other models
-            request_body = {
-                "prompt": prompt,
-                "max_tokens": 1000
-            }
+            # Prepare request body based on model
+            if "claude" in BEDROCK_MODEL_ID.lower():
+                request_body = {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1000,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                }
+            else:  # Default for other models
+                request_body = {
+                    "prompt": prompt,
+                    "max_tokens": 1000
+                }
 
-        # Invoke Bedrock model
-        response = bedrock_runtime.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            body=json.dumps(request_body)
-        )
+            # Invoke Bedrock model
+            response = bedrock_runtime.invoke_model(
+                modelId=BEDROCK_MODEL_ID,
+                body=json.dumps(request_body)
+            )
 
-        # Parse response based on model
-        response_body = json.loads(response['body'].read())
+            # Parse response based on model
+            response_body = json.loads(response['body'].read())
 
-        if "claude" in BEDROCK_MODEL_ID.lower():
-            summary = response_body['content'][0]['text']
-        else:  # Default for other models
-            summary = response_body.get('completion', '')
+            if "claude" in BEDROCK_MODEL_ID.lower():
+                summary = response_body['content'][0]['text']
+            else:  # Default for other models
+                summary = response_body.get('completion', '')
 
-        return summary
+            return summary
 
-    except Exception as e:
-        print(f"Error summarizing with Bedrock: {str(e)}")
-        return f"Error generating summary: {str(e)}"
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+
+            # Retry for ThrottlingException or ServiceQuotaExceeded
+            if error_code in ["ThrottlingException", "ServiceQuotaExceeded", "TooManyRequestsException"]:
+                retry_count += 1
+
+                if retry_count > MAX_RETRIES:
+                    print(f"Maximum retries reached ({MAX_RETRIES}). Giving up on article: {article_data.get('title')}")
+                    return f"Error generating summary after {MAX_RETRIES} retries: {str(e)}"
+
+                # Apply exponential backoff with jitter (randomization)
+                jitter = random.uniform(0, 0.5)  # Random value between 0 and 0.5 seconds
+                delay = (2 ** retry_count) * base_delay + jitter
+
+                print(f"Bedrock API throttled. Retry {retry_count}/{MAX_RETRIES} after {delay:.2f} seconds")
+                time.sleep(delay)
+            else:
+                # Fail immediately for other errors
+                print(f"Error summarizing with Bedrock: {str(e)}")
+                return f"Error generating summary: {str(e)}"
+
+        except Exception as e:
+            print(f"Unexpected error summarizing with Bedrock: {str(e)}")
+            return f"Error generating summary: {str(e)}"
 
 def update_article_in_dynamodb(article_id, summary):
     """Update article in DynamoDB with summary"""
@@ -211,9 +242,9 @@ def send_slack_notification(articles_with_summaries):
 
         # Prepare notification content with language-specific headers
         if OUTPUT_LANGUAGE == 'ja':
-            header_text = f"{datetime.datetime.now().strftime('%Y-%m-%d')}のAWSニュース要約"
-            intro_text = "本日のAWSアナウンスメントの要約です："
-            read_more_text = "フルアナウンスメントを読む"
+            header_text = f"AWS News Summary for {datetime.datetime.now().strftime('%Y-%m-%d')}"
+            intro_text = "Here are today's AWS announcement summaries:"
+            read_more_text = "Read Full Announcement"
         else:
             header_text = f"AWS News Summaries for {datetime.datetime.now().strftime('%Y-%m-%d')}"
             intro_text = "Here are your daily AWS announcement summaries:"
@@ -320,8 +351,8 @@ def send_sns_notification(articles_with_summaries):
 
         # Prepare notification content with language-specific subjects
         if OUTPUT_LANGUAGE == 'ja':
-            subject = f"AWS ニュースの要約 - {datetime.datetime.now().strftime('%Y-%m-%d')}"
-            message = f"{datetime.datetime.now().strftime('%Y-%m-%d')}のAWSニュース要約\n\n"
+            subject = f"AWS News Summary - {datetime.datetime.now().strftime('%Y-%m-%d')}"
+            message = f"AWS News Summary for {datetime.datetime.now().strftime('%Y-%m-%d')}\n\n"
         else:
             subject = f"AWS News Summary - {datetime.datetime.now().strftime('%Y-%m-%d')}"
             message = f"AWS News Summaries for {datetime.datetime.now().strftime('%Y-%m-%d')}\n\n"
@@ -340,7 +371,7 @@ def send_sns_notification(articles_with_summaries):
             # Add link explicitly in the message body if available
             if link and link != '#':
                 if OUTPUT_LANGUAGE == 'ja':
-                    message += f"詳細情報: {link}\n\n"
+                    message += f"More information: {link}\n\n"
                 else:
                     message += f"More information: {link}\n\n"
             else:
@@ -376,7 +407,7 @@ def send_sns_notification(articles_with_summaries):
         return False
 
 def process_articles():
-    """Process unprocessed articles"""
+    """Process unprocessed articles with improved batch processing"""
     articles_with_summaries = []
 
     # Get unprocessed articles based on storage type
@@ -385,30 +416,51 @@ def process_articles():
     else:  # default to dynamodb
         unprocessed_articles = get_unprocessed_articles_from_dynamodb()
 
-    print(f"Found {len(unprocessed_articles)} unprocessed AWS announcements")
+    total_articles = len(unprocessed_articles)
+    print(f"Found {total_articles} unprocessed AWS announcements")
     print(f"Output language set to: {OUTPUT_LANGUAGE}")
+    print(f"Processing in batches of {BATCH_SIZE}")
 
-    # Process each article
-    for article in unprocessed_articles:
-        article_id = article.get('id')
+    # Split articles for batch processing
+    for i in range(0, total_articles, BATCH_SIZE):
+        batch = unprocessed_articles[i:i+BATCH_SIZE]
+        print(f"Processing batch {i//BATCH_SIZE + 1}/{(total_articles + BATCH_SIZE - 1)//BATCH_SIZE} ({len(batch)} articles)")
 
-        # Summarize article in the specified language
-        summary = summarize_article_with_bedrock(article, OUTPUT_LANGUAGE)
+        # Process each article in the current batch
+        for article in batch:
+            article_id = article.get('id')
+            title = article.get('title', 'No Title')
+            print(f"Processing article: {title}")
 
-        # Update article with summary
-        if STORAGE_TYPE == 's3':
-            update_success = update_article_in_s3(article, summary)
-        else:  # default to dynamodb
-            update_success = update_article_in_dynamodb(article_id, summary)
+            # Summarize article in the specified language
+            summary = summarize_article_with_bedrock(article, OUTPUT_LANGUAGE)
 
-        if update_success:
-            # Add article with summary to list for notification
-            article_with_summary = article.copy()
-            article_with_summary['summary'] = summary
-            articles_with_summaries.append(article_with_summary)
+            # Update article with summary
+            if STORAGE_TYPE == 's3':
+                update_success = update_article_in_s3(article, summary)
+            else:  # default to dynamodb
+                update_success = update_article_in_dynamodb(article_id, summary)
+
+            if update_success:
+                # Add article with summary to list for notification
+                article_with_summary = article.copy()
+                article_with_summary['summary'] = summary
+                articles_with_summaries.append(article_with_summary)
+                print(f"Successfully processed article: {title}")
+
+            # Short wait between articles in a batch
+            if len(batch) > 1:
+                time.sleep(0.5)
+
+        # Wait between batches (to avoid API rate limits)
+        if i + BATCH_SIZE < total_articles:
+            batch_delay = random.uniform(2, 5)  # Random wait between 2-5 seconds
+            print(f"Waiting {batch_delay:.2f} seconds before next batch...")
+            time.sleep(batch_delay)
 
     # Send notification if articles were processed
     if articles_with_summaries:
+        print(f"Sending notifications for {len(articles_with_summaries)} processed articles")
         # Try Slack notification first
         if SLACK_WEBHOOK_URL:
             slack_success = send_slack_notification(articles_with_summaries)
@@ -421,11 +473,18 @@ def process_articles():
 
 def lambda_handler(event, context):
     try:
+        start_time = datetime.datetime.now()
+        print(f"Lambda function started at: {start_time.isoformat()}")
+
         # Check if this is an API Gateway event
         is_api_event = event.get('httpMethod') is not None
 
         # Process articles
         processed_articles = process_articles()
+
+        end_time = datetime.datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        print(f"Lambda function completed in {duration:.2f} seconds")
 
         # Prepare response
         result = {
