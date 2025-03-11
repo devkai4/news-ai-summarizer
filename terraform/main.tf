@@ -213,12 +213,12 @@ resource "aws_lambda_function" "news_processor" {
 
   environment {
     variables = {
-      NEWS_BUCKET_NAME   = aws_s3_bucket.news_bucket.bucket
-      NEWS_TABLE_NAME    = aws_dynamodb_table.news_table.name
-      STORAGE_TYPE       = "dynamodb" # or "s3"
-      BEDROCK_MODEL_ID   = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-      SLACK_WEBHOOK_URL  = var.slack_webhook_url
-      SNS_TOPIC_ARN      = aws_sns_topic.news_updates.arn
+      NEWS_BUCKET_NAME  = aws_s3_bucket.news_bucket.bucket
+      NEWS_TABLE_NAME   = aws_dynamodb_table.news_table.name
+      STORAGE_TYPE      = "dynamodb" # or "s3"
+      BEDROCK_MODEL_ID  = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+      SLACK_WEBHOOK_URL = var.slack_webhook_url
+      SNS_TOPIC_ARN     = aws_sns_topic.news_updates.arn
     }
   }
 }
@@ -323,20 +323,62 @@ resource "aws_lambda_permission" "api_gateway_processor" {
 }
 
 # API Gateway deployment
+# API Gateway deployment
 resource "aws_api_gateway_deployment" "news_api_deployment" {
   depends_on = [
     aws_api_gateway_integration.collect_integration,
-    aws_api_gateway_integration.process_integration
+    aws_api_gateway_integration.process_integration,
+    aws_api_gateway_integration.process_async_integration
   ]
 
   rest_api_id = aws_api_gateway_rest_api.news_api.id
+
+  # Optional: You can add a trigger to force redeployment when needed
+  triggers = {
+    # This will cause a redeployment each time this value changes
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.collect_resource.id,
+      aws_api_gateway_resource.process_resource.id,
+      aws_api_gateway_resource.process_async_resource.id,
+      aws_api_gateway_method.collect_method.id,
+      aws_api_gateway_method.process_method.id,
+      aws_api_gateway_method.process_async_method.id,
+      aws_api_gateway_integration.collect_integration.id,
+      aws_api_gateway_integration.process_integration.id,
+      aws_api_gateway_integration.process_async_integration.id
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
+
+
 
 # Add a separate API Gateway stage resource
 resource "aws_api_gateway_stage" "prod" {
   deployment_id = aws_api_gateway_deployment.news_api_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.news_api.id
   stage_name    = "prod"
+
+  # Set longer timeout (in milliseconds) - 29 seconds is the maximum
+  variables = {
+    "timeout" = "29000"
+  }
+}
+
+# Add API Gateway method settings for the process endpoint
+resource "aws_api_gateway_method_settings" "process_settings" {
+  rest_api_id = aws_api_gateway_rest_api.news_api.id
+  stage_name  = aws_api_gateway_stage.prod.stage_name
+  method_path = "${aws_api_gateway_resource.process_resource.path_part}/${aws_api_gateway_method.process_method.http_method}"
+
+  settings {
+    throttling_burst_limit = 5
+    throttling_rate_limit  = 10
+    # Remove logging and metrics settings
+  }
 }
 
 # SNS Topic for news updates
@@ -379,4 +421,77 @@ resource "aws_lambda_permission" "sns_to_slack_permission" {
   function_name = aws_lambda_function.sns_to_slack[0].function_name
   principal     = "sns.amazonaws.com"
   source_arn    = aws_sns_topic.news_updates.arn
+}
+
+resource "aws_lambda_function" "news_processor_async" {
+  function_name = "news_processor_async"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 30
+  memory_size   = 128
+
+  filename = "${path.module}/../news_processor_async.zip"
+
+  environment {
+    variables = {
+      PROCESSOR_LAMBDA_NAME = aws_lambda_function.news_processor.function_name
+    }
+  }
+}
+
+# IAM policy for the async processor to invoke other Lambdas
+resource "aws_iam_role_policy" "lambda_invoke_policy" {
+  name = "lambda_invoke_policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = [
+          "${aws_lambda_function.news_processor.arn}"
+        ]
+      }
+    ]
+  })
+}
+
+# API Gateway resource for async processor
+resource "aws_api_gateway_resource" "process_async_resource" {
+  rest_api_id = aws_api_gateway_rest_api.news_api.id
+  parent_id   = aws_api_gateway_rest_api.news_api.root_resource_id
+  path_part   = "process-async"
+}
+
+# API Gateway method for async processor
+resource "aws_api_gateway_method" "process_async_method" {
+  rest_api_id   = aws_api_gateway_rest_api.news_api.id
+  resource_id   = aws_api_gateway_resource.process_async_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+# API Gateway integration with async Lambda
+resource "aws_api_gateway_integration" "process_async_integration" {
+  rest_api_id = aws_api_gateway_rest_api.news_api.id
+  resource_id = aws_api_gateway_resource.process_async_resource.id
+  http_method = aws_api_gateway_method.process_async_method.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.news_processor_async.invoke_arn
+}
+
+# Lambda permission for API Gateway
+resource "aws_lambda_permission" "api_gateway_processor_async" {
+  statement_id  = "AllowExecutionFromAPIGatewayAsync"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.news_processor_async.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.news_api.execution_arn}/*/${aws_api_gateway_method.process_async_method.http_method}${aws_api_gateway_resource.process_async_resource.path}"
 }

@@ -35,7 +35,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "Project root directory: $PROJECT_ROOT"
 
 # Define the Lambda functions
-LAMBDA_FUNCTIONS=("news_collector" "news_processor" "sns_to_slack")
+LAMBDA_FUNCTIONS=("news_collector" "news_processor" "sns_to_slack" "news_processor_async")
 
 # Package each Lambda function
 for function_name in "${LAMBDA_FUNCTIONS[@]}"; do

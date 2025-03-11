@@ -55,4 +55,5 @@ news_processor.zip
 news_collector.zip
 lambda-layer.zip
 sns_to_slack.zip
+news_processor_async.zip
 temp/python
