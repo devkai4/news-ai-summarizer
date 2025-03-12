@@ -223,11 +223,11 @@ resource "aws_lambda_function" "news_processor" {
   }
 }
 
-# EventBridge rule to trigger news collector (daily at midnight UTC)
+# EventBridge rule to trigger news collector (daily at 7:00 AM JST / 10:00 PM UTC)
 resource "aws_cloudwatch_event_rule" "daily_news_collection" {
   name                = "daily_news_collection"
-  description         = "Triggers Lambda to collect news daily"
-  schedule_expression = "cron(0 0 * * ? *)"
+  description         = "Triggers Lambda to collect news daily at 7:00 AM Japan time"
+  schedule_expression = "cron(0 22 * * ? *)"
 }
 
 # EventBridge target to Lambda
