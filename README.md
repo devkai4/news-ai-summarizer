@@ -12,7 +12,7 @@ The application consists of the following components:
 2. **News Processor Lambda**: Processes unprocessed news articles using AWS Bedrock for summarization
 3. **Storage**: Uses either DynamoDB or S3 for storing articles and their summaries
 4. **Notifications**: Sends summarized news to Slack via webhooks (with SNS as fallback)
-5. **Scheduling**: Uses EventBridge to run the collector on a schedule
+5. **Scheduling**: Uses EventBridge to run the collector and processor on a schedule
 6. **API**: Provides API Gateway endpoints for manual triggering
 
 ## Prerequisites
@@ -81,16 +81,20 @@ terraform apply
 
 ## Usage
 
-### Automatic News Collection
+### Automatic News Collection and Processing
 
-By default, the news collector runs daily at midnight UTC to fetch news articles.
+The application is fully automated with the following schedule:
+- The news collector runs daily at 7:00 AM JST (10:00 PM UTC) to fetch news articles
+- The news processor runs daily at 7:10 AM JST (10:10 PM UTC) to process and summarize the collected articles
+- Summarized news is automatically delivered to your configured Slack channel
 
 ### Manual Triggering
 
-You can manually trigger the functions using the API Gateway endpoints:
+You can also manually trigger the functions using the API Gateway endpoints:
 
 1. **Collect News**: Send a POST request to the /collect endpoint
 2. **Process News**: Send a POST request to the /process endpoint
+3. **Process News Asynchronously**: Send a POST request to the /process-async endpoint
 
 Example using curl:
 

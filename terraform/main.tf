@@ -495,3 +495,26 @@ resource "aws_lambda_permission" "api_gateway_processor_async" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.news_api.execution_arn}/*/${aws_api_gateway_method.process_async_method.http_method}${aws_api_gateway_resource.process_async_resource.path}"
 }
+
+# EventBridge rule to trigger news processor (7:10 AM JST / 10:10 PM UTC)
+resource "aws_cloudwatch_event_rule" "daily_news_processing" {
+  name                = "daily_news_processing"
+  description         = "Triggers Lambda to process news daily at 7:10 AM Japan time (10 minutes after collection)"
+  schedule_expression = "cron(10 22 * * ? *)"
+}
+
+# EventBridge target to Lambda for news processor
+resource "aws_cloudwatch_event_target" "news_processor_target" {
+  rule      = aws_cloudwatch_event_rule.daily_news_processing.name
+  target_id = "news_processor"
+  arn       = aws_lambda_function.news_processor.arn
+}
+
+# Lambda permission for EventBridge (for news processor)
+resource "aws_lambda_permission" "allow_eventbridge_processor" {
+  statement_id  = "AllowExecutionFromEventBridgeProcessor"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.news_processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_news_processing.arn
+}
