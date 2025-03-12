@@ -204,7 +204,7 @@ resource "aws_lambda_function" "news_processor" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.9"
-  timeout       = 300
+  timeout       = 600 # Increase timeout from 300 to 600
   memory_size   = 1024
 
   filename = "${path.module}/../news_processor.zip"
@@ -428,7 +428,7 @@ resource "aws_lambda_function" "news_processor_async" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.9"
-  timeout       = 30
+  timeout       = 120 # Increase from 30 to 120
   memory_size   = 128
 
   filename = "${path.module}/../news_processor_async.zip"

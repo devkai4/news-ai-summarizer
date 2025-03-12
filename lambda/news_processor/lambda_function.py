@@ -18,7 +18,7 @@ SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
 OUTPUT_LANGUAGE = os.environ.get('OUTPUT_LANGUAGE', 'ja')  # Default to Japanese, can be set to 'en' for English
 MAX_RETRIES = int(os.environ.get('MAX_RETRIES', '8'))  # Increase the number of retries
-BATCH_SIZE = int(os.environ.get('BATCH_SIZE', '2'))  # Limit the number of articles processed at once
+BATCH_SIZE = int(os.environ.get('BATCH_SIZE', '1'))  # Limit the number of articles processed at once
 
 # Initialize AWS services
 bedrock_runtime = boto3.client('bedrock-runtime')
@@ -174,7 +174,7 @@ At the end, please include the following URL for reference: {link}"""
                     return f"Error generating summary after {MAX_RETRIES} retries: {str(e)}"
 
                 # Apply exponential backoff with jitter (randomization)
-                jitter = random.uniform(0, 0.5)  # Random value between 0 and 0.5 seconds
+                jitter = random.uniform(1, 5)  # Random value between 1 and 5 seconds
                 delay = (2 ** retry_count) * base_delay + jitter
 
                 print(f"Bedrock API throttled. Retry {retry_count}/{MAX_RETRIES} after {delay:.2f} seconds")
@@ -454,7 +454,7 @@ def process_articles():
 
         # Wait between batches (to avoid API rate limits)
         if i + BATCH_SIZE < total_articles:
-            batch_delay = random.uniform(2, 5)  # Random wait between 2-5 seconds
+            batch_delay = random.uniform(5, 15)  # Random wait between 5-15 seconds
             print(f"Waiting {batch_delay:.2f} seconds before next batch...")
             time.sleep(batch_delay)
 

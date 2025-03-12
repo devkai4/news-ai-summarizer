@@ -55,7 +55,7 @@ def collect_articles():
         feed = feedparser.parse(RSS_FEED_URL)
 
         # Process each entry
-        for entry in feed.entries[:5]:  # Get the latest 5 articles
+        for entry in feed.entries[:10]:  # Get the latest 10 articles
             # Generate unique ID
             article_id = str(uuid.uuid4())
 
